@@ -17,6 +17,7 @@ Key design decisions:
 import asyncio
 import json
 import logging
+import os
 import random
 import re
 import sqlite3
@@ -1167,12 +1168,15 @@ class SessionDB:
                 pass
 
     @staticmethod
-    def _fts_trigger_count(cursor: sqlite3.Cursor) -> int:
-        placeholders = ",".join("?" for _ in _FTS_TRIGGERS)
+    def _fts_trigger_count(
+        cursor: sqlite3.Cursor,
+        triggers: tuple = _FTS_TRIGGERS,
+    ) -> int:
+        placeholders = ",".join("?" for _ in triggers)
         row = cursor.execute(
             f"SELECT COUNT(*) FROM sqlite_master "
             f"WHERE type = 'trigger' AND name IN ({placeholders})",
-            _FTS_TRIGGERS,
+            triggers,
         ).fetchone()
         return int(row[0] if not isinstance(row, sqlite3.Row) else row[0])
 
@@ -1723,13 +1727,36 @@ class SessionDB:
             # FTS5 setup. Run the DDL even when the virtual table exists so
             # CREATE TRIGGER IF NOT EXISTS repairs trigger-only degradation from
             # an earlier no-FTS5 runtime.
-            triggers_need_repair = self._fts_trigger_count(cursor) < len(_FTS_TRIGGERS)
+            # HubsAI 2026-08-08 (HERMES_DISABLE_TRIGRAM_FTS=1): a operacao e
+            # 100% pt-BR e o trigram so e CONSULTADO em busca com 3+ chars CJK
+            # (ver search) — aqui era 53% do state.db, escrito a cada mensagem
+            # e lido nunca. Com a chave, o init derruba tabela+triggers e busca
+            # CJK cai no LIKE (caminho que ja existe). Sem a chave, identico ao
+            # upstream — inclusive RECRIAR e re-preencher o indice (rollback =
+            # tirar a chave e reiniciar; o backfill leva minutos no 1o start).
+            _trigram_off = os.environ.get("HERMES_DISABLE_TRIGRAM_FTS") == "1"
+            _expected_triggers = tuple(
+                t for t in _FTS_TRIGGERS
+                if not (_trigram_off and "trigram" in t)
+            )
+            triggers_need_repair = (
+                self._fts_trigger_count(cursor, _expected_triggers)
+                < len(_expected_triggers)
+            )
             self._fts_enabled = self._ensure_fts_schema(cursor, "messages_fts", FTS_SQL)
 
             # Trigram FTS5 for CJK/substring search. This is optional relative
             # to the main FTS table; if it cannot be created, CJK search falls
             # back to LIKE.
-            if self._fts_enabled:
+            if self._fts_enabled and _trigram_off:
+                for _trg in _FTS_TRIGGERS:
+                    if "trigram" in _trg:
+                        cursor.execute(f"DROP TRIGGER IF EXISTS {_trg}")
+                cursor.execute("DROP TABLE IF EXISTS messages_fts_trigram")
+                self._trigram_available = False
+                if triggers_need_repair:
+                    self._rebuild_fts_indexes(cursor, include_trigram=False)
+            elif self._fts_enabled:
                 trigram_enabled = self._ensure_fts_schema(
                     cursor, "messages_fts_trigram", FTS_TRIGRAM_SQL
                 )
