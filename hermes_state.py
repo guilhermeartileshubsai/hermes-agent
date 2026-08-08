@@ -2022,6 +2022,15 @@ class SessionDB:
               and leave the stale breadcrumb (#self-heal). The table itself
               stays for a later capable open to rebuild.
         """
+        if os.environ.get("HERMES_DISABLE_TRIGRAM_FTS") == "1":
+            # HubsAI: deployment sem CJK — nao criar nem servir o bigram.
+            for _trig in _FTS_CJK_TRIGGERS:
+                cursor.execute(f"DROP TRIGGER IF EXISTS {_trig}")
+            cursor.execute("DROP TABLE IF EXISTS messages_fts_cjk")
+            cursor.execute("DROP VIEW IF EXISTS messages_fts_cjk_src")
+            self._fts_cjk_available = False
+            return
+
         cjk_present = bool(cursor.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' "
             "AND name = 'messages_fts_cjk'"
@@ -2126,12 +2135,15 @@ class SessionDB:
                 pass
 
     @staticmethod
-    def _fts_trigger_count(cursor: sqlite3.Cursor) -> int:
-        placeholders = ",".join("?" for _ in _FTS_TRIGGERS)
+    def _fts_trigger_count(
+        cursor: sqlite3.Cursor,
+        triggers: tuple = _FTS_TRIGGERS,
+    ) -> int:
+        placeholders = ",".join("?" for _ in triggers)
         row = cursor.execute(
             f"SELECT COUNT(*) FROM sqlite_master "
             f"WHERE type = 'trigger' AND name IN ({placeholders})",
-            _FTS_TRIGGERS,
+            triggers,
         ).fetchone()
         return int(row[0] if not isinstance(row, sqlite3.Row) else row[0])
 
@@ -3501,14 +3513,36 @@ class SessionDB:
             # its inline triggers exist (via the legacy DDL), and skip the
             # v23 view/external tables entirely. Fresh installs and opted-in
             # DBs have no legacy inline FTS, so they get the v23 DDL.
+            # HubsAI 2026-08-08 (HERMES_DISABLE_TRIGRAM_FTS=1): deployment
+            # 100% pt-BR — o trigram so e consultado em busca CJK e custava
+            # 53% do state.db dos gestores. Com a chave, o init derruba as
+            # superficies CJK (trigram aqui; bigram dentro de
+            # _ensure_fts_cjk_schema) e busca CJK cai no LIKE. Sem a chave,
+            # comportamento identico — o init recria tudo (rollback trivial).
+            _trigram_off = os.environ.get("HERMES_DISABLE_TRIGRAM_FTS") == "1"
+            _expected_triggers = tuple(
+                t for t in _FTS_TRIGGERS
+                if not (_trigram_off and "trigram" in t)
+            )
             if self._db_has_legacy_inline_fts(cursor):
                 triggers_need_repair = (
-                    self._fts_trigger_count(cursor) < len(_FTS_TRIGGERS)
+                    self._fts_trigger_count(cursor, _expected_triggers)
+                    < len(_expected_triggers)
                 )
                 self._fts_enabled = self._ensure_fts_schema(
                     cursor, "messages_fts", LEGACY_FTS_SQL
                 )
-                if self._fts_enabled:
+                if self._fts_enabled and _trigram_off:
+                    for _trg in _FTS_TRIGGERS:
+                        if "trigram" in _trg:
+                            cursor.execute(f"DROP TRIGGER IF EXISTS {_trg}")
+                    cursor.execute("DROP TABLE IF EXISTS messages_fts_trigram")
+                    self._trigram_available = False
+                    if triggers_need_repair:
+                        self._rebuild_legacy_fts_indexes(
+                            cursor, include_trigram=False
+                        )
+                elif self._fts_enabled:
                     trigram_enabled = self._ensure_fts_schema(
                         cursor, "messages_fts_trigram", LEGACY_FTS_TRIGRAM_SQL
                     )
@@ -3528,7 +3562,20 @@ class SessionDB:
                 # Trigram FTS5 for CJK/substring search. This is optional
                 # relative to the main FTS table; if it cannot be created,
                 # CJK search falls back to LIKE.
-                if self._fts_enabled:
+                if self._fts_enabled and _trigram_off:
+                    for _trg in _FTS_TRIGGERS:
+                        if "trigram" in _trg:
+                            cursor.execute(f"DROP TRIGGER IF EXISTS {_trg}")
+                    cursor.execute("DROP TABLE IF EXISTS messages_fts_trigram")
+                    cursor.execute("DROP VIEW IF EXISTS messages_fts_trigram_src")
+                    self._trigram_available = False
+                    if triggers_need_repair:
+                        self._rebuild_fts_indexes(
+                            cursor,
+                            include_trigram=False,
+                        )
+                    self._ensure_fts_cjk_schema(cursor)
+                elif self._fts_enabled:
                     trigram_enabled = self._ensure_fts_schema(
                         cursor, "messages_fts_trigram", FTS_TRIGRAM_SQL
                     )
