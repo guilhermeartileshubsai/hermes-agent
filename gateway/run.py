@@ -2642,13 +2642,13 @@ def _normalize_empty_agent_response(
         ) or ("400" in error_str and history_len > 50)
         if is_context_failure:
             return (
-                "⚠️ Session too large for the model's context window.\n"
-                "Use /compact to compress the conversation, or "
-                "/reset to start fresh."
+                "⚠️ A conversa ficou grande demais para o modelo.\n"
+                "Use /compact para resumir a conversa, ou "
+                "/reset para começar do zero."
             )
         return (
-            f"The request failed: {str(error_detail)[:300]}\n"
-            "Try again or use /reset to start a fresh session."
+            f"A requisição falhou: {str(error_detail)[:300]}\n"
+            "Tente de novo ou use /reset para começar uma conversa nova."
         )
 
     api_calls = int(agent_result.get("api_calls", 0) or 0)
@@ -2663,8 +2663,8 @@ def _normalize_empty_agent_response(
         # silence there swallows a real user message, so surface it.
         if api_calls == 0:
             return (
-                "⚠️ Your message was interrupted before processing started "
-                "(likely by a recent /stop). Please send it again."
+                "⚠️ Sua mensagem foi interrompida antes de começar a ser processada "
+                "(provavelmente por um /stop recente). Mande de novo, por favor."
             )
         return response
     if api_calls > 0:
@@ -2672,10 +2672,10 @@ def _normalize_empty_agent_response(
             return ""
         if agent_result.get("partial"):
             err = agent_result.get("error", "processing incomplete")
-            return f"⚠️ Processing stopped: {str(err)[:200]}. Try again."
+            return f"⚠️ O processamento parou: {str(err)[:200]}. Tente de novo."
         return (
-            "⚠️ Processing completed but no response was generated. "
-            "This may be a transient error — try sending your message again."
+            "⚠️ O processamento terminou mas nenhuma resposta foi gerada. "
+            "Pode ter sido falha passageira — mande a mensagem de novo."
         )
 
     # api_calls == 0, not failed, not interrupted: the agent never ran for
@@ -2690,8 +2690,8 @@ def _normalize_empty_agent_response(
         and not agent_result.get("partial")
     ):
         return (
-            "⚠️ Your message wasn't processed (the previous turn was still "
-            "being cleaned up). Please send it again."
+            "⚠️ Sua mensagem não foi processada (a tarefa anterior ainda estava "
+            "sendo encerrada). Mande de novo, por favor."
         )
 
     return response
@@ -4440,7 +4440,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         return "restart" if self._restart_requested else "shutdown"
 
     def _status_action_gerund(self) -> str:
-        return "restarting" if self._restart_requested else "shutting down"
+        return "reiniciando" if self._restart_requested else "desligando"
 
     def _queue_during_drain_enabled(self) -> bool:
         # Both "queue" and "steer" modes imply the user doesn't want messages
@@ -5413,9 +5413,9 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             thread_meta = self._thread_metadata_for_source(event.source, reply_anchor)
             if self._queue_during_drain_enabled():
                 self._queue_or_replace_pending_event(session_key, event)
-                message = f"⏳ Gateway {self._status_action_gerund()} — queued for the next turn after it comes back."
+                message = f"⏳ O assistente está {self._status_action_gerund()} — sua mensagem ficou na fila e será respondida assim que ele voltar."
             else:
-                message = f"⏳ Gateway is {self._status_action_gerund()} and is not accepting another turn right now."
+                message = f"⏳ O assistente está {self._status_action_gerund()} e não consegue atender agora. Mande de novo daqui a pouco."
 
             await adapter._send_with_retry(
                 chat_id=event.source.chat_id,
@@ -5685,42 +5685,42 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 if start_ts:
                     elapsed_min = int((now - start_ts) / 60)
                     if elapsed_min > 0:
-                        status_parts.append(f"{elapsed_min} min elapsed")
+                        status_parts.append(f"{elapsed_min} min rodando")
                 if max_iter:
-                    status_parts.append(f"iteration {iteration}/{max_iter}")
+                    status_parts.append(f"passo {iteration} de {max_iter}")
                 if current_tool:
-                    status_parts.append(f"running: {current_tool}")
+                    status_parts.append(f"agora: {current_tool}")
             except Exception:
                 pass
 
         status_detail = f" ({', '.join(status_parts)})" if status_parts else ""
         if is_steer_mode:
             message = (
-                f"⏩ Steered into current run{status_detail}. "
-                f"Your message arrives after the next tool call."
+                f"⏩ Seu recado entrou na tarefa em andamento{status_detail}. "
+                f"Ele chega logo depois do próximo passo."
             )
         elif is_queue_mode and demoted_for_subagents:
             # #30170 — explain the demotion so the user knows their
             # follow-up didn't accidentally kill the subagent and
             # discovers `/stop` as the explicit escape hatch.
             message = (
-                f"⏳ Subagent working{status_detail} — your message is queued for "
-                f"when it finishes (use /stop to cancel everything)."
+                f"⏳ Um auxiliar está trabalhando{status_detail} — sua mensagem entrou na fila e "
+                f"será respondida quando terminar (use /stop para cancelar tudo)."
             )
         elif is_queue_mode and demoted_for_compression:
             message = (
-                f"⏳ Compressing context{status_detail} — your message is queued for "
-                f"when it finishes (use /stop to cancel everything)."
+                f"⏳ Organizando a memória da conversa{status_detail} — sua mensagem entrou na fila e "
+                f"será respondida quando terminar (use /stop para cancelar tudo)."
             )
         elif is_queue_mode:
             message = (
-                f"⏳ Queued for the next turn{status_detail}. "
-                f"I'll respond once the current task finishes."
+                f"⏳ Sua mensagem entrou na fila{status_detail}. "
+                f"Respondo assim que a tarefa atual terminar."
             )
         else:
             message = (
-                f"⚡ Interrupting current task{status_detail}. "
-                f"I'll respond to your message shortly."
+                f"⚡ Interrompendo a tarefa atual{status_detail}. "
+                f"Já respondo sua mensagem."
             )
 
         # First-touch onboarding: the very first time a user sends a message
@@ -5849,14 +5849,14 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         active = self._snapshot_running_agents()
         restart_source = self._restart_command_source if self._restart_requested else None
 
-        action = "restarting" if self._restart_requested else "shutting down"
+        action = "está reiniciando" if self._restart_requested else "está desligando"
         hint = (
-            "Your current task will be interrupted. "
-            "Send any message after restart and I'll try to resume where you left off."
+            "A tarefa em andamento vai ser interrompida. "
+            "Mande qualquer mensagem depois que ele voltar e eu tento retomar de onde paramos."
             if self._restart_requested
-            else "Your current task will be interrupted."
+            else "A tarefa em andamento vai ser interrompida."
         )
-        msg = f"⚠️ Gateway {action} — {hint}"
+        msg = f"⚠️ O assistente {action} — {hint}"
 
         notified: set[tuple[str, str, Optional[str]]] = set()
         for session_key in active:
@@ -8722,6 +8722,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     f"default profile)."
                 )
             with _profile_runtime_scope(profile_home):
+                if hasattr(platform_config, "extra") and isinstance(platform_config.extra, dict):
+                    platform_config.extra.setdefault("profile", profile_name)
                 adapter = self._create_adapter(platform, platform_config)
             if not adapter:
                 continue
@@ -9493,8 +9495,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     self._enqueue_fifo(_quick_key, queued_event, adapter)
                 depth = self._queue_depth(_quick_key, adapter=self._adapter_for_source(source))
                 if depth <= 1:
-                    return "Queued for the next turn."
-                return f"Queued for the next turn. ({depth} queued)"
+                    return "Sua mensagem entrou na fila para a próxima vez."
+                return f"Sua mensagem entrou na fila para a próxima vez. ({depth} na fila)"
 
             # /steer <prompt> — inject mid-run after the next tool call.
             # Unlike /queue (turn boundary), /steer lands BETWEEN tool-call
@@ -9524,11 +9526,11 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                         accepted = running_agent.steer(steer_text)
                     except Exception as exc:
                         logger.warning("Steer failed for session %s: %s", _quick_key, exc)
-                        return f"⚠️ Steer failed: {exc}"
+                        return f"⚠️ Não consegui inserir o recado: {exc}"
                     if accepted:
                         preview = steer_text[:60] + ("..." if len(steer_text) > 60 else "")
-                        return f"⏩ Steer queued — arrives after the next tool call: '{preview}'"
-                    return "Steer rejected (empty payload)."
+                        return f"⏩ Recado na fila — entra logo depois do próximo passo: '{preview}'"
+                    return "Recado vazio — não há o que inserir."
                 # Running agent is missing or lacks steer() — fall back to queue.
                 adapter = self._adapter_for_source(source)
                 if adapter:
@@ -9649,8 +9651,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             # producing a zero-char response. See #5057, #6252, #10370.
             if _cmd_def_inner:
                 return (
-                    f"⏳ Agent is running — `/{_cmd_def_inner.name}` can't run "
-                    f"mid-turn. Wait for the current response or `/stop` first."
+                    f"⏳ O assistente está no meio de uma tarefa — `/{_cmd_def_inner.name}` não roda agora. "
+                    f"Espere a resposta atual ou mande `/stop` antes."
                 )
 
             if event.message_type == MessageType.PHOTO:
@@ -9696,7 +9698,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     # Force-clean the sentinel so the session is unlocked.
                     self._release_running_agent_state(_quick_key)
                     logger.info("HARD STOP (pending) for session %s — sentinel cleared", _quick_key)
-                    return EphemeralReply("⚡ Force-stopped. The agent was still starting — session unlocked.")
+                    return EphemeralReply("⚡ Parado à força. Ele ainda estava começando — a conversa foi liberada.")
                 # Queue the message so it will be picked up after the
                 # agent starts.
                 adapter = self._adapter_for_source(source)
@@ -9712,9 +9714,9 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 if self._queue_during_drain_enabled():
                     self._queue_or_replace_pending_event(_quick_key, event)
                 return (
-                    f"⏳ Gateway {self._status_action_gerund()} — queued for the next turn after it comes back."
+                    f"⏳ O assistente está {self._status_action_gerund()} — sua mensagem ficou na fila e será respondida assim que ele voltar."
                     if self._queue_during_drain_enabled()
-                    else f"⏳ Gateway is {self._status_action_gerund()} and is not accepting another turn right now."
+                    else f"⏳ O assistente está {self._status_action_gerund()} e não consegue atender agora. Mande de novo daqui a pouco."
                 )
             if self._busy_input_mode == "queue":
                 logger.debug("PRIORITY queue follow-up for session %s", _quick_key)
@@ -10164,7 +10166,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             return await self._handle_voice_command(event)
 
         if self._draining:
-            return f"⏳ Gateway is {self._status_action_gerund()} and is not accepting new work right now."
+            return f"⏳ O assistente está {self._status_action_gerund()} e não consegue atender agora. Mande de novo daqui a pouco."
 
         # User-defined quick commands (bypass agent loop, no LLM call)
         if command:
@@ -10419,9 +10421,9 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 _quick_key,
             )
             return (
-                "⏳ This agent is draining for a maintenance action and isn't "
-                "accepting new turns right now. It'll be back in a moment — "
-                "please resend shortly."
+                "⏳ O assistente está entrando em manutenção e não aceita "
+                "tarefa nova agora. Ele volta em instantes — "
+                "mande de novo daqui a pouco."
             )
 
         # ── Claim this session before any await ───────────────────────
@@ -11609,12 +11611,12 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                                         from agent.redact import redact_sensitive_text
                                         _err = redact_sensitive_text(_err, force=True)
                                         _warn_msg = (
-                                            "⚠️ Context compression aborted "
-                                            f"({_err}). No messages were dropped — "
-                                            "conversation is unchanged. Run /compress "
-                                            "to retry, /reset for a clean session, or "
-                                            "check your auxiliary.compression model "
-                                            "configuration."
+                                            "⚠️ Não consegui resumir a conversa "
+                                            f"({_err}). Nada foi perdido — "
+                                            "a conversa continua inteira. Use /compress "
+                                            "para tentar de novo, /reset para começar limpo, ou "
+                                            "confira a configuração do modelo "
+                                            "auxiliary.compression."
                                         )
                                         try:
                                             _adapter = self._adapter_for_source(source)
@@ -11897,9 +11899,9 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             # looks like a bug; a short explanation is more helpful.
             if response == "(empty)" and not _intentional_silence:
                 response = (
-                    "⚠️ The model returned no response after processing tool "
-                    "results. This can happen with some models — try again or "
-                    "rephrase your question."
+                    "⚠️ O modelo não devolveu resposta depois de usar as "
+                    "ferramentas. Acontece com alguns modelos — tente de novo ou "
+                    "reformule a pergunta."
                 )
             agent_messages = agent_result.get("messages", [])
             _response_time = time.time() - _msg_start_time
@@ -12521,15 +12523,15 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 # for the API to process — treat it the same way.
                 if _hist_len > 50:
                     return (
-                        "⚠️ Session too large for the model's context window.\n"
-                        "Use /compact to compress the conversation, or "
-                        "/reset to start fresh."
+                        "⚠️ A conversa ficou grande demais para o modelo.\n"
+                        "Use /compact para resumir a conversa, ou "
+                        "/reset para começar do zero."
                     )
                 elif status_code == 400:
-                    status_hint = " The request was rejected by the API."
+                    status_hint = " A requisição foi recusada pela API."
             return (
-                f"Sorry, I encountered an unexpected error.{status_hint}\n"
-                "Try again or use /reset to start a fresh session."
+                f"Desculpe, deu um erro inesperado.{status_hint}\n"
+                "Tente de novo ou use /reset para começar uma conversa nova."
             )
         finally:
             # Restore session context variables to their pre-handler state
@@ -15108,11 +15110,24 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 reply_to_message_id=message_id,
                 adapter=adapter,
             )
-            result = await adapter.send(
-                str(chat_id),
-                "♻ Gateway restarted successfully. Your session continues.",
-                metadata=_non_conversational_metadata(metadata, platform=platform),
-            )
+            restart_message = "♻ Gateway restarted successfully. Your session continues."
+            restart_metadata = _non_conversational_metadata(metadata, platform=platform)
+            result = None
+            # Telegram can be connected but keep its send path marked degraded
+            # until the first getUpdates request proves polling progress.  The
+            # restart notification runs immediately after connect, so wait/retry
+            # briefly instead of dropping the only "I'm back" signal.
+            for _attempt in range(6):
+                result = await adapter.send(
+                    str(chat_id),
+                    restart_message,
+                    metadata=restart_metadata,
+                )
+                if result is None or getattr(result, "success", True) is True:
+                    break
+                if getattr(result, "error", None) != "send_path_degraded":
+                    break
+                await asyncio.sleep(1.0)
             # adapter.send() catches provider errors (e.g. "Chat not found")
             # and returns SendResult(success=False) rather than raising, so
             # we must inspect the result before claiming success — otherwise
@@ -17583,7 +17598,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 )
             except Exception as _phrase_err:
                 logger.debug("generic status phrase selection failed: %s", _phrase_err)
-                return "still on it" if kind in {"heartbeat", "waiting", "long_running", "status"} else "one sec"
+                return "ainda trabalhando nisso" if kind in {"heartbeat", "waiting", "long_running", "status"} else "um instante"
         # Disable tool progress for webhooks - they don't support message editing,
         # so each progress line would be sent as a separate message.
         from gateway.config import Platform
@@ -19923,7 +19938,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                         _parts = []
                         if _want_iteration_detail:
                             _parts.append(
-                                f"iteration {_a['api_call_count']}/{_a['max_iterations']}"
+                                f"passo {_a['api_call_count']} de {_a['max_iterations']}"
                             )
                         _action = _a.get("current_tool") or _a.get("last_activity_desc")
                         if _action:
@@ -19935,7 +19950,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 _heartbeat_text = (
                     _generic_status_phrase("status")
                     if _long_running_mode == "generic"
-                    else f"⏳ Working — {_elapsed_mins} min{_status_detail}"
+                    else f"⏳ Trabalhando há {_elapsed_mins} min{_status_detail}"
                 )
                 try:
                     _notify_res = None
@@ -20069,10 +20084,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                             try:
                                 await _warn_adapter.send(
                                     source.chat_id,
-                                    f"⚠️ No activity for {_elapsed_warn} min. "
-                                    f"If the agent does not respond soon, it will "
-                                    f"be timed out in {_remaining_mins} min. "
-                                    f"You can continue waiting or use /reset.",
+                                    f"⚠️ Sem atividade há {_elapsed_warn} min. "
+                                    f"Se ele não responder logo, a tarefa vai ser "
+                                    f"encerrada em {_remaining_mins} min. "
+                                    f"Você pode esperar ou usar /reset.",
                                     metadata=_status_thread_metadata,
                                 )
                             except Exception as _warn_err:

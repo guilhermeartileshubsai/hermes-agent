@@ -569,30 +569,30 @@ def build_tool_preview(tool_name: str, args: dict, max_len: int | None = None) -
 # A trailing space-then-preview is appended by build_tool_label() when the
 # tool's argument preview is available (e.g. "Reading docs/api.md").
 _TOOL_VERBS: dict[str, str] = {
-    "web_search": "Searching the web",
-    "web_extract": "Reading",
-    "browser_navigate": "Browsing",
-    "browser_click": "Clicking",
-    "browser_type": "Typing",
-    "read_file": "Reading",
-    "write_file": "Writing",
-    "patch": "Editing",
-    "search_files": "Searching files",
-    "terminal": "Running",
-    "execute_code": "Running code",
-    "image_generate": "Generating image",
-    "video_generate": "Generating video",
-    "text_to_speech": "Generating speech",
-    "vision_analyze": "Looking at the image",
-    "session_search": "Searching past sessions",
-    "skill_view": "Reading skill",
-    "skills_list": "Listing skills",
-    "skill_manage": "Updating skill",
-    "delegate_task": "Delegating",
-    "cronjob": "Scheduling",
-    "clarify": "Asking",
-    "memory": "Updating memory",
-    "todo": "Updating tasks",
+    "web_search": "Pesquisando na web",
+    "web_extract": "Lendo",
+    "browser_navigate": "Abrindo a página",
+    "browser_click": "Clicando em",
+    "browser_type": "Digitando",
+    "read_file": "Lendo",
+    "write_file": "Gravando",
+    "patch": "Editando",
+    "search_files": "Procurando nos arquivos",
+    "terminal": "Executando",
+    "execute_code": "Executando código",
+    "image_generate": "Gerando imagem",
+    "video_generate": "Gerando vídeo",
+    "text_to_speech": "Gerando áudio",
+    "vision_analyze": "Olhando a imagem",
+    "session_search": "Procurando em conversas anteriores",
+    "skill_view": "Lendo a skill",
+    "skills_list": "Listando as skills",
+    "skill_manage": "Atualizando a skill",
+    "delegate_task": "Delegando",
+    "cronjob": "Agendando",
+    "clarify": "Perguntando",
+    "memory": "Atualizando a memória",
+    "todo": "Atualizando as tarefas",
 }
 
 # Verbs that read better without the raw argument preview appended.
@@ -637,7 +637,7 @@ def get_tool_verb(tool_name: str) -> str | None:
 
 def tool_verb_connector(tool_name: str) -> str:
     """Return the connector between a verb and its preview (" for " or " ")."""
-    return " for " if tool_name in _TOOL_VERBS_FOR_CONNECTOR else " "
+    return " por " if tool_name in _TOOL_VERBS_FOR_CONNECTOR else " "
 
 
 def verb_drops_preview(tool_name: str) -> bool:
@@ -668,7 +668,7 @@ def build_tool_label(tool_name: str, args: dict, max_len: int | None = None) -> 
     if not preview:
         return verb
     if tool_name in _TOOL_VERBS_FOR_CONNECTOR:
-        return f"{verb} for {preview}"
+        return f"{verb} por {preview}"
     return f"{verb} {preview}"
 
 
