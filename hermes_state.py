@@ -968,6 +968,30 @@ END;
 """
 
 
+
+def _trigram_disabled(cursor) -> bool:
+    """HubsAI: o trigram FTS esta desligado NESTE banco?
+
+    O marcador mora em state_meta (chave 'hubsai_trigram_disabled'), nao em
+    variavel de ambiente: em 08/08 o gate por env cobria so o init e os demais
+    caminhos recriavam o indice de 590 MB — a decisao precisa viajar com o
+    ARQUIVO, para valer tambem em cron com env limpo, CLI e reparo.
+    Falha para False (comportamento de fabrica) se a tabela ainda nao existe.
+    """
+    try:
+        row = cursor.execute(
+            "SELECT value FROM state_meta WHERE key = 'hubsai_trigram_disabled'"
+        ).fetchone()
+    except Exception:
+        return False
+    if not row:
+        return False
+    try:
+        valor = row["value"]
+    except Exception:
+        valor = row[0]
+    return str(valor).strip().lower() in ("1", "true", "yes", "on")
+
 class SessionDB:
     """
     SQLite-backed session storage with FTS5 search.
@@ -1195,7 +1219,9 @@ class SessionDB:
             "COALESCE(tool_calls, '') "
             "FROM messages"
         )
-        if not include_trigram:
+        # include_trigram=True e o DEFAULT do produto: sem esta consulta ao
+        # marcador, qualquer chamador que nao passe o parametro repovoa o indice.
+        if not include_trigram or _trigram_disabled(cursor):
             return
         cursor.execute("DELETE FROM messages_fts_trigram")
         cursor.execute(
@@ -1551,7 +1577,7 @@ class SessionDB:
                     _fts_trigram_exists = self._fts_table_probe(
                         cursor, "messages_fts_trigram"
                     )
-                    if _fts_trigram_exists is False:
+                    if _fts_trigram_exists is False and not _trigram_disabled(cursor):
                         if self._ensure_fts_schema(
                             cursor, "messages_fts_trigram", FTS_TRIGRAM_SQL
                         ):
@@ -1605,7 +1631,9 @@ class SessionDB:
                                 "COALESCE(tool_calls, '') "
                                 "FROM messages"
                             )
-                        trigram_ok = self._ensure_fts_schema(
+                        trigram_ok = (
+                            not _trigram_disabled(cursor)
+                        ) and self._ensure_fts_schema(
                             cursor, "messages_fts_trigram", FTS_TRIGRAM_SQL
                         )
                         if trigram_ok:
@@ -1734,7 +1762,13 @@ class SessionDB:
             # CJK cai no LIKE (caminho que ja existe). Sem a chave, identico ao
             # upstream — inclusive RECRIAR e re-preencher o indice (rollback =
             # tirar a chave e reiniciar; o backfill leva minutos no 1o start).
-            _trigram_off = os.environ.get("HERMES_DISABLE_TRIGRAM_FTS") == "1"
+            # HubsAI 19/08: o marcador no BANCO manda (state_meta); a env
+            # continua valendo como atalho, mas sozinha ela nao bastava — vide
+            # a reversao de 08/08.
+            _trigram_off = (
+                _trigram_disabled(cursor)
+                or os.environ.get("HERMES_DISABLE_TRIGRAM_FTS") == "1"
+            )
             _expected_triggers = tuple(
                 t for t in _FTS_TRIGGERS
                 if not (_trigram_off and "trigram" in t)
