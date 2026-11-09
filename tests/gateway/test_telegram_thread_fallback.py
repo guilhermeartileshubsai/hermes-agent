@@ -703,6 +703,41 @@ async def test_send_uses_reply_anchor_when_direct_topic_fallback_metadata_exists
 
 
 @pytest.mark.asyncio
+async def test_send_retries_rejected_private_thread_with_direct_topic_id():
+    """Bot API DM topics retry by native id when message_thread_id is rejected."""
+    adapter = _make_adapter()
+    call_log = []
+
+    async def mock_send_message(**kwargs):
+        call_log.append(dict(kwargs))
+        if len(call_log) == 1:
+            raise FakeBadRequest("Message thread not found")
+        return SimpleNamespace(message_id=778)
+
+    adapter._bot = SimpleNamespace(send_message=mock_send_message)
+
+    result = await adapter.send(
+        chat_id="123",
+        content="test message",
+        metadata={
+            "thread_id": "20197",
+            "telegram_dm_topic_reply_fallback": True,
+            "direct_messages_topic_id": "20197",
+            "telegram_reply_to_message_id": "462",
+        },
+    )
+
+    assert result.success is True
+    assert len(call_log) == 2
+    assert call_log[0]["reply_to_message_id"] == 462
+    assert call_log[0]["message_thread_id"] == 20197
+    assert "direct_messages_topic_id" not in call_log[0]
+    assert call_log[1]["reply_to_message_id"] == 462
+    assert call_log[1]["message_thread_id"] is None
+    assert call_log[1]["direct_messages_topic_id"] == 20197
+
+
+@pytest.mark.asyncio
 async def test_send_created_private_topic_uses_message_thread_without_anchor():
     """Topics created via createForumTopic are addressable by message_thread_id directly."""
     adapter = _make_adapter()

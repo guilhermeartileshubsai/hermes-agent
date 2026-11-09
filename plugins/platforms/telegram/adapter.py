@@ -4024,7 +4024,29 @@ class TelegramAdapter(BasePlatformAdapter):
                         # specific cases instead of blindly retrying.
                         if _BadReq and isinstance(send_err, _BadReq):
                             if self._is_thread_not_found_error(send_err) and effective_thread_id is not None:
-                                if private_dm_topic_send or (metadata and metadata.get("telegram_dm_topic_created_for_send")):
+                                if private_dm_topic_send:
+                                    direct_topic_id = self._metadata_direct_messages_topic_id(metadata)
+                                    if (
+                                        direct_topic_id is not None
+                                        and thread_kwargs.get("direct_messages_topic_id") is None
+                                    ):
+                                        logger.warning(
+                                            "[%s] Private DM thread %s not found, retrying with direct_messages_topic_id",
+                                            self.name,
+                                            effective_thread_id,
+                                        )
+                                        thread_kwargs = {
+                                            "message_thread_id": None,
+                                            "direct_messages_topic_id": int(direct_topic_id),
+                                        }
+                                        effective_thread_id = None
+                                        continue
+                                    return SendResult(
+                                        success=False,
+                                        error=str(send_err),
+                                        retryable=False,
+                                    )
+                                if metadata and metadata.get("telegram_dm_topic_created_for_send"):
                                     return SendResult(
                                         success=False,
                                         error=str(send_err),
